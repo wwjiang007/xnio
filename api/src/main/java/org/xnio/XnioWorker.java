@@ -123,19 +123,7 @@ public abstract class XnioWorker extends AbstractExecutorService implements Conf
         bindAddressTable = builder.getBindAddressConfigurations();
         final Runnable terminationTask = new Runnable() {
             public void run() {
-                try {
-                    taskPoolTerminated();
-                } catch (Throwable t) {
-                    final Runnable task = XnioWorker.this.terminationTask;
-                    if (task != null) try {
-                        task.run();
-                    } catch (Throwable t2) {
-                        t2.addSuppressed(t);
-                        throw t2;
-                    }
-                    throw t;
-                }
-                XnioWorker.this.terminationTask.run();
+                taskPoolTerminated();
             }
         };
         final ExecutorService executorService = builder.getExternalExecutorService();
@@ -800,12 +788,16 @@ public abstract class XnioWorker extends AbstractExecutorService implements Conf
      * the {@link #taskPoolTerminated()} method is called.
      */
     protected void shutDownTaskPool() {
-        if (! isTaskPoolExternal()) doPrivileged(new PrivilegedAction<Object>() {
-            public Object run() {
-                taskPool.shutdown();
-                return null;
-            }
-        });
+        if (isTaskPoolExternal()) {
+            taskPoolTerminated();
+        } else {
+            doPrivileged(new PrivilegedAction<Object>() {
+                public Object run() {
+                    taskPool.shutdown();
+                    return null;
+                }
+            });
+        }
     }
 
     /**
@@ -1064,8 +1056,12 @@ public abstract class XnioWorker extends AbstractExecutorService implements Conf
         }
 
         public Builder addBindAddressConfiguration(CidrAddress cidrAddress, InetSocketAddress bindAddress) {
-            if (cidrAddress.getNetworkAddress().getClass() != bindAddress.getAddress().getClass()) {
-                throw Messages.msg.mismatchAddressType(cidrAddress.getNetworkAddress().getClass(), bindAddress.getAddress().getClass());
+            final Class<? extends InetAddress> networkAddrClass = cidrAddress.getNetworkAddress().getClass();
+            if (bindAddress.isUnresolved()) {
+                throw Messages.msg.addressUnresolved(bindAddress);
+            }
+            if (networkAddrClass != bindAddress.getAddress().getClass()) {
+                throw Messages.msg.mismatchAddressType(networkAddrClass, bindAddress.getAddress().getClass());
             }
             bindAddressConfigurations.put(cidrAddress, bindAddress);
             return this;
