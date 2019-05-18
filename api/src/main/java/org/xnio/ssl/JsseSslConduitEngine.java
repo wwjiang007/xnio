@@ -469,6 +469,10 @@ final class JsseSslConduitEngine {
                         // given caller is reading, tell it to continue only if we can move away from  NEED_WRAP
                         // and flush any wrapped data we may have left
                         if (doFlush()) {
+                            if (result.getStatus() == SSLEngineResult.Status.CLOSED) {
+                                closeOutbound();
+                                return false;
+                            }
                             if (!handleWrapResult(result = engineWrap(Buffers.EMPTY_BYTE_BUFFER, buffer), true) || !doFlush()) {
                                 needWrap();
                                 return false;
@@ -594,7 +598,7 @@ final class JsseSslConduitEngine {
     public long unwrap(final ByteBuffer[] dsts, final int offset, final int length) throws IOException {
         assert ! Thread.holdsLock(getUnwrapLock());
         assert ! Thread.holdsLock(getWrapLock());
-        if (dsts.length == 0 || length == 0) {
+        if (dsts.length == 0 || length == 0 || isClosed()) {
             return 0L;
         }
         clearFlags(FIRST_HANDSHAKE | BUFFER_UNDERFLOW);
